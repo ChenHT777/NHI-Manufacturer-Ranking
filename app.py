@@ -49,7 +49,7 @@ def parse_dosage_to_numeric(dose_str):
         return val
     return 0.0
 
-# --- 3. 產出標準化 Excel 與 HTML 預覽報表 (核心邏輯不變) ---
+# --- 3. 產出標準化 Excel 與 HTML 預覽報表 ---
 def generate_reports(selected_components, selected_forms, selected_doses):
     if df_global.empty:
         return None, "❌ 系統未成功載入 data.csv 資料庫。", ""
@@ -323,24 +323,22 @@ col1, col2 = st.columns(2)
 with col1:
     st.markdown("### 🔍 輸入條件")
     
-    # 第一步：搜尋與連動過濾
-    search_input = st.text_input("第一步：輸入成分關鍵字", placeholder="例如：Levofloxacin")
-    filtered_comps = []
-    if search_input.strip():
-        search_text = search_input.strip().lower()
-        filtered_comps = [c for c in ALL_COMPONENTS if search_text in c.lower()]
-        
-    selected_components = st.multiselect("📋 第二步：選擇成分品項 (可多選)", options=filtered_comps)
+    # 合併第一步與第二步：使用內建即時搜尋的多選選單
+    selected_components = st.multiselect(
+        "📋 第一步：搜尋並選擇成分 (支援打字即時搜尋)", 
+        options=ALL_COMPONENTS, 
+        placeholder="請輸入成分關鍵字（打越多字越精準，例如打 Levo...）"
+    )
     
-    # 第三步：動態產生劑型
+    # 第二步：動態產生劑型
     form_options = []
     if selected_components and not df_global.empty:
         df_filtered = df_global[df_global['成分'].isin(selected_components)]
         form_options = sorted(df_filtered['劑型'].dropna().unique())
         
-    selected_forms = st.multiselect("💊 第三步：選擇欲包含的劑型", options=form_options, default=form_options)
+    selected_forms = st.multiselect("💊 第二步：選擇欲包含的劑型", options=form_options, default=form_options)
     
-    # 第四步：動態產生劑量
+    # 第三步：動態產生劑量
     dose_options = []
     if selected_components and selected_forms and not df_global.empty:
         df_filtered = df_global[
@@ -349,9 +347,9 @@ with col1:
         ]
         dose_options = sorted(df_filtered['劑量'].dropna().unique(), key=parse_dosage_to_numeric)
         
-    selected_doses = st.multiselect("🧪 第四步：選擇欲包含的劑量", options=dose_options, default=dose_options)
+    selected_doses = st.multiselect("🧪 第三步：選擇欲包含的劑量", options=dose_options, default=dose_options)
     
-    submit_btn = st.button("🚀 第五步：產生報表與預覽", type="primary", use_container_width=True)
+    submit_btn = st.button("🚀 第四步：產生報表與預覽", type="primary", use_container_width=True)
 
 with col2:
     st.markdown("### 📥 報表下載區")
