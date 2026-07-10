@@ -2,6 +2,7 @@ import os
 import re
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
@@ -437,5 +438,62 @@ with col2:
 st.markdown("---")
 st.markdown("### 網頁即時預覽")
 
+# 顯示 HTML 預覽與一鍵圖片下載 (透過內嵌沙盒繞過限制)
 if 'html_preview' in st.session_state:
-    st.markdown(st.session_state['html_preview'], unsafe_allow_html=True)
+    # 我們在這裡寫一個完整的 HTML 網頁，把您的報表和截圖腳本包在一起
+    wrapped_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+        <style>
+            body {{ font-family: '微軟正黑體', sans-serif; margin: 0; padding: 10px; }}
+            .download-btn-container {{ text-align: right; margin-bottom: 15px; }}
+            .dl-btn {{
+                background-color: #FF4B4B; color: white; border: none; padding: 10px 20px;
+                border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: 0.2s;
+            }}
+            .dl-btn:hover {{ background-color: #FF3333; transform: translateY(-2px); }}
+        </style>
+    </head>
+    <body>
+        <div class="download-btn-container">
+            <button class="dl-btn" onclick="downloadImage()">📸 一鍵下載為高畫質圖片 (PNG)</button>
+        </div>
+        
+        <div id="capture-target">
+            {st.session_state['html_preview']}
+        </div>
+
+        <script>
+            function downloadImage() {{
+                var element = document.getElementById('capture-target');
+                var scrollHint = element.querySelector('.scroll-hint');
+                
+                // 截圖前瞬間隱藏手機版滑動提示文字
+                if(scrollHint) scrollHint.style.display = 'none';
+                
+                html2canvas(element, {{ 
+                    scale: 2, 
+                    backgroundColor: '#FFFFFF',
+                    useCORS: true 
+                }}).then(function(canvas) {{
+                    // 截圖完把提示文字叫回來
+                    if(scrollHint) scrollHint.style.display = '';
+                    
+                    var imgDataUrl = canvas.toDataURL('image/png');
+                    var link = document.createElement('a');
+                    link.download = '健保報表截圖.png';
+                    link.href = imgDataUrl;
+                    link.click();
+                }});
+            }}
+        </script>
+    </body>
+    </html>
+    """
+    
+    # 建立高度 800px 的沙盒區塊來渲染這個功能
+    components.html(wrapped_html, height=800, scrolling=True)
