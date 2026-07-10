@@ -375,14 +375,11 @@ with col1:
         form_options = sorted(df_filtered['劑型'].dropna().unique())
         
         if form_options:
-            # 使用 st.toggle 切換開關，對手機觸控最友善
             select_all_forms = st.toggle("☑️ 第二步：全選所有劑型", value=True)
             
             if select_all_forms:
-                # 若開啟全選，底層變數直接帶入所有選項，但不顯示擁擠的標籤
                 selected_forms = form_options
             else:
-                # 若關閉全選，則顯示空白的多選單讓使用者自己點選
                 selected_forms = st.multiselect(
                     "💊 請手動選擇特定劑型", 
                     options=form_options, 
@@ -410,6 +407,9 @@ with col1:
                     options=dose_options, 
                     placeholder="請點擊此處展開選項..."
                 )
+                
+    # 👇 就是剛剛不小心漏掉的這行！把它補回來，右邊的程式碼就不會報錯了
+    submit_btn = st.button("🚀 第四步：產生報表與預覽", type="primary", use_container_width=True)
 
 with col2:
     st.markdown("### 📥 報表下載區")
