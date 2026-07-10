@@ -314,6 +314,48 @@ def generate_reports(selected_components, selected_forms, selected_doses):
 
 
 # --- 4. 介面層 (Streamlit UI) ---
+
+def check_password():
+    """回傳 True 代表密碼正確，否則回傳 False"""
+    
+    # 定義一個內部函式來驗證密碼
+    def password_entered():
+        # 比對使用者輸入的密碼是否與系統環境變數中的密碼一致
+        if st.session_state["password"] == st.secrets["app_password"]:
+            st.session_state["password_correct"] = True
+            # 驗證成功後，清空輸入框內的密碼紀錄，增加安全性
+            del st.session_state["password"]  
+        else:
+            st.session_state["password_correct"] = False
+
+    # 檢查 session_state 中是否已經有驗證成功的紀錄
+    if st.session_state.get("password_correct", False):
+        return True
+
+    # 若尚未驗證，則顯示密碼輸入介面
+    st.title("🔒 系統登入")
+    st.text_input(
+        "請輸入系統存取密碼", 
+        type="password", 
+        on_change=password_entered, 
+        key="password"
+    )
+    
+    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+        st.error("❌ 密碼錯誤，請重新輸入。")
+        
+    return False
+
+# -----------------------------------------
+# 🚨 密碼攔截點：如果密碼不對，程式就在這裡停止運行，不往下執行
+# -----------------------------------------
+if not check_password():
+    st.stop()
+
+# =========================================
+# 以下為原本的系統主畫面 (完全不需要修改，只要放在 check_password() 下方即可)
+# =========================================
+
 st.title("💊 健保資料庫數據分析工具")
 st.markdown(f"**系統狀態：** {INIT_MESSAGE}")
 
@@ -323,7 +365,7 @@ col1, col2 = st.columns(2)
 with col1:
     st.markdown("### 🔍 輸入條件")
     
-    # 合併第一步與第二步：使用內建即時搜尋的多選選單
+    # 第一步：搜尋並選擇成分
     selected_components = st.multiselect(
         "📋 第一步：搜尋並選擇成分 (支援打字即時搜尋)", 
         options=ALL_COMPONENTS, 
@@ -354,14 +396,12 @@ with col1:
 with col2:
     st.markdown("### 📥 報表下載區")
     
-    # 當按下按鈕時，執行分析邏輯
     if submit_btn:
         with st.spinner("報表產生中，請稍候..."):
             file_name, msg, html_res = generate_reports(selected_components, selected_forms, selected_doses)
             
             if file_name:
                 st.success(msg)
-                # 讀取產生好的 Excel 並提供下載按鈕
                 with open(file_name, "rb") as f:
                     st.download_button(
                         label="📄 一鍵下載 Excel 報表",
@@ -370,7 +410,6 @@ with col2:
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True
                     )
-                # 將 HTML 存入 session_state 以便顯示
                 st.session_state['html_preview'] = html_res
             else:
                 st.error(msg)
@@ -380,6 +419,5 @@ with col2:
 st.markdown("---")
 st.markdown("### 網頁即時預覽")
 
-# 顯示 HTML 預覽
 if 'html_preview' in st.session_state:
     st.markdown(st.session_state['html_preview'], unsafe_allow_html=True)
