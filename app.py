@@ -367,16 +367,31 @@ with col1:
         placeholder="請輸入成分關鍵字（打越多字越精準，例如打 Levo...）"
     )
     
-    # 第二步：動態產生劑型
+    # 第二步：動態產生劑型與全選邏輯
     form_options = []
+    selected_forms = []
     if selected_components and not df_global.empty:
         df_filtered = df_global[df_global['成分'].isin(selected_components)]
         form_options = sorted(df_filtered['劑型'].dropna().unique())
         
-    selected_forms = st.multiselect("💊 第二步：選擇欲包含的劑型", options=form_options, default=form_options)
+        if form_options:
+            # 使用 st.toggle 切換開關，對手機觸控最友善
+            select_all_forms = st.toggle("☑️ 第二步：全選所有劑型", value=True)
+            
+            if select_all_forms:
+                # 若開啟全選，底層變數直接帶入所有選項，但不顯示擁擠的標籤
+                selected_forms = form_options
+            else:
+                # 若關閉全選，則顯示空白的多選單讓使用者自己點選
+                selected_forms = st.multiselect(
+                    "💊 請手動選擇特定劑型", 
+                    options=form_options, 
+                    placeholder="請點擊此處展開選項..."
+                )
     
-    # 第三步：動態產生劑量
+    # 第三步：動態產生劑量與全選邏輯
     dose_options = []
+    selected_doses = []
     if selected_components and selected_forms and not df_global.empty:
         df_filtered = df_global[
             (df_global['成分'].isin(selected_components)) & 
@@ -384,9 +399,17 @@ with col1:
         ]
         dose_options = sorted(df_filtered['劑量'].dropna().unique(), key=parse_dosage_to_numeric)
         
-    selected_doses = st.multiselect("🧪 第三步：選擇欲包含的劑量", options=dose_options, default=dose_options)
-    
-    submit_btn = st.button("🚀 第四步：產生報表與預覽", type="primary", use_container_width=True)
+        if dose_options:
+            select_all_doses = st.toggle("☑️ 第三步：全選所有劑量", value=True)
+            
+            if select_all_doses:
+                selected_doses = dose_options
+            else:
+                selected_doses = st.multiselect(
+                    "🧪 請手動選擇特定劑量", 
+                    options=dose_options, 
+                    placeholder="請點擊此處展開選項..."
+                )
 
 with col2:
     st.markdown("### 📥 報表下載區")
