@@ -346,3 +346,73 @@ def check_password():
 # -----------------------------------------
 if not check_password():
     st.stop()
+    
+# =========================================
+# 以下為原本的系統主畫面 (完全不需要修改，只要放在 check_password() 下方即可)
+# =========================================
+
+st.title("💊 健保資料庫數據分析工具")
+st.markdown(f"**系統狀態：** {INIT_MESSAGE}")
+
+# 建立左右兩欄
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("### 🔍 輸入條件")
+    
+    # 第一步：搜尋並選擇成分
+    selected_components = st.multiselect(
+        "📋 第一步：搜尋並選擇成分 (支援打字即時搜尋)", 
+        options=ALL_COMPONENTS, 
+        placeholder="請輸入成分關鍵字（打越多字越精準，例如打 Levo...）"
+    )
+    
+    # 第二步：動態產生劑型
+    form_options = []
+    if selected_components and not df_global.empty:
+        df_filtered = df_global[df_global['成分'].isin(selected_components)]
+        form_options = sorted(df_filtered['劑型'].dropna().unique())
+        
+    selected_forms = st.multiselect("💊 第二步：選擇欲包含的劑型", options=form_options, default=form_options)
+    
+    # 第三步：動態產生劑量
+    dose_options = []
+    if selected_components and selected_forms and not df_global.empty:
+        df_filtered = df_global[
+            (df_global['成分'].isin(selected_components)) & 
+            (df_global['劑型'].isin(selected_forms))
+        ]
+        dose_options = sorted(df_filtered['劑量'].dropna().unique(), key=parse_dosage_to_numeric)
+        
+    selected_doses = st.multiselect("🧪 第三步：選擇欲包含的劑量", options=dose_options, default=dose_options)
+    
+    submit_btn = st.button("🚀 第四步：產生報表與預覽", type="primary", use_container_width=True)
+
+with col2:
+    st.markdown("### 📥 報表下載區")
+    
+    if submit_btn:
+        with st.spinner("報表產生中，請稍候..."):
+            file_name, msg, html_res = generate_reports(selected_components, selected_forms, selected_doses)
+            
+            if file_name:
+                st.success(msg)
+                with open(file_name, "rb") as f:
+                    st.download_button(
+                        label="📄 一鍵下載 Excel 報表",
+                        data=f,
+                        file_name=file_name,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                st.session_state['html_preview'] = html_res
+            else:
+                st.error(msg)
+    else:
+        st.info("👈 請先於左側設定條件並點擊「產生報表」")
+
+st.markdown("---")
+st.markdown("### 網頁即時預覽")
+
+if 'html_preview' in st.session_state:
+    st.markdown(st.session_state['html_preview'], unsafe_allow_html=True)
