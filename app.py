@@ -307,11 +307,24 @@ def generate_reports(selected_components, selected_forms, selected_doses):
     ws.oddFooter.right.text = '&"微軟正黑體,Regular"&12https://data.gov.tw/dataset/22131'
     ws.page_setup.scaleWithDoc = True; ws.page_setup.alignWithMargins = True
 
-    safe_filename = re.sub(r'[\\/*?:"<>|]', "_", header_title_text) + ".xlsx"
-    wb.save(safe_filename)
+    # 引入時間套件來產生流水號
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # 擷取藥品名稱（成分），並過濾掉不合法的檔名字元
+    comp_names_clean = "_".join(df_filtered['成分'].unique())
+    comp_names_clean = re.sub(r'[\\/*?:"<>| ]', "_", comp_names_clean)
+    
+    # 組合出統一的主檔名：藥品名稱_時間流水號 (例如: Ibuprofen_20260711_153025)
+    base_filename = f"{comp_names_clean}_{timestamp}"
+    excel_filename = f"{base_filename}.xlsx"
+    
+    # 儲存 Excel
+    wb.save(excel_filename)
     
     success_msg = "🎉 成功！已順利產出「Excel 報表」與下方「預覽畫面」。請點擊按鈕下載檔案。"
-    return safe_filename, success_msg, html_content
+    # 👇 這裡多回傳一個 base_filename 給外層使用
+    return excel_filename, success_msg, html_content, base_filename
 
 
 # --- 4. 介面層 (Streamlit UI) ---
@@ -417,10 +430,14 @@ with col2:
     
     if submit_btn:
         with st.spinner("報表產生中，請稍候..."):
-            file_name, msg, html_res = generate_reports(selected_components, selected_forms, selected_doses)
+            # 👇 這裡改為接收 4 個回傳值
+            file_name, msg, html_res, base_name = generate_reports(selected_components, selected_forms, selected_doses)
             
             if file_name:
                 st.success(msg)
+                # 👇 將主檔名紀錄到系統變數中，供最下方的圖片下載按鈕讀取
+                st.session_state['current_base_filename'] = base_name
+                
                 with open(file_name, "rb") as f:
                     st.download_button(
                         label="📄 一鍵下載 Excel 報表",
@@ -439,8 +456,9 @@ st.markdown("---")
 st.markdown("### 網頁即時預覽")
 
 # 顯示 HTML 預覽與一鍵圖片下載 (透過內嵌沙盒繞過限制)
-if 'html_preview' in st.session_state:
-    # 我們在這裡寫一個完整的 HTML 網頁，把您的報表和截圖腳本包在一起
+# 顯示 HTML 預覽與一鍵圖片下載
+# 👇 這裡多加一個判斷，確保檔名變數已經產生
+if 'html_preview' in st.session_state and 'current_base_filename' in st.session_state:
     wrapped_html = f"""
     <!DOCTYPE html>
     <html>
@@ -470,22 +488,36 @@ if 'html_preview' in st.session_state:
         <script>
             function downloadImage() {{
                 var element = document.getElementById('capture-target');
+                var wrapper = document.querySelector('.table-responsive');
                 var scrollHint = element.querySelector('.scroll-hint');
                 
-                // 截圖前瞬間隱藏手機版滑動提示文字
+                var originalWidth = element.style.width;
+                var originalOverflow = wrapper ? wrapper.style.overflowX : '';
+                var originalHintDisplay = scrollHint ? scrollHint.style.display : '';
+                
+                var targetWidth = element.scrollWidth;
+                element.style.width = targetWidth + 'px';
+                if(wrapper) wrapper.style.overflowX = 'visible';
                 if(scrollHint) scrollHint.style.display = 'none';
                 
                 html2canvas(element, {{ 
                     scale: 2, 
                     backgroundColor: '#FFFFFF',
-                    useCORS: true 
+                    useCORS: true,
+                    width: targetWidth,
+                    windowWidth: targetWidth,
+                    scrollX: 0,
+                    scrollY: 0
                 }}).then(function(canvas) {{
-                    // 截圖完把提示文字叫回來
-                    if(scrollHint) scrollHint.style.display = '';
+                    element.style.width = originalWidth;
+                    if(wrapper) wrapper.style.overflowX = originalOverflow;
+                    if(scrollHint) scrollHint.style.display = originalHintDisplay;
                     
                     var imgDataUrl = canvas.toDataURL('image/png');
                     var link = document.createElement('a');
-                    link.download = '健保報表截圖.png';
+                    
+                    # 👇 關鍵改動：這裡直接動態帶入 Python 產生的主檔名
+                    link.download = '{st.session_state['current_base_filename']}.png';
                     link.href = imgDataUrl;
                     link.click();
                 }});
@@ -495,5 +527,4 @@ if 'html_preview' in st.session_state:
     </html>
     """
     
-    # 建立高度 800px 的沙盒區塊來渲染這個功能
     components.html(wrapped_html, height=800, scrolling=True)
