@@ -368,6 +368,38 @@ if not check_password():
 st.title("💊 健保資料庫數據分析工具")
 st.markdown(f"**系統狀態：** {INIT_MESSAGE}")
 
+# 👇 修正手機版下拉選單（multiselect）被鍵盤或版面擠壓而往上彈出、超出畫面看不到/選不到的問題。
+# st.multiselect 是 Streamlit 原生元件（BaseWeb Select），無法直接從 Python 端調整其彈出選單的
+# CSS，因此透過一個高度為 0、不可見的 components.html 注入 <style>，並用 window.parent.document
+# 存取外層主頁面（因為同源，可以這樣做）。這裡只放寬選單高度並加上捲動與提高 z-index，
+# 不強制覆寫其彈出方向/座標，避免破壞 BaseWeb 原本的定位邏輯。
+components.html(
+    """
+    <script>
+    (function() {
+        try {
+            var doc = window.parent.document;
+            if (doc.getElementById('mobile-dropdown-fix-style')) return;
+            var style = doc.createElement('style');
+            style.id = 'mobile-dropdown-fix-style';
+            style.innerHTML = `
+                [data-baseweb="popover"] { z-index: 999999 !important; }
+                [data-baseweb="popover"] ul[role="listbox"] {
+                    max-height: 40vh !important;
+                    overflow-y: auto !important;
+                    -webkit-overflow-scrolling: touch !important;
+                }
+            `;
+            doc.head.appendChild(style);
+        } catch (e) {
+            console.warn('無法套用手機下拉選單修正:', e);
+        }
+    })();
+    </script>
+    """,
+    height=0,
+)
+
 # 建立左右兩欄
 col1, col2 = st.columns(2)
 
@@ -517,10 +549,20 @@ if 'html_preview' in st.session_state and 'current_base_filename' in st.session_
                 var originalHintDisplay = scrollHint ? scrollHint.style.display : '';
                 var originalBtnHtml = btn ? btn.innerHTML : '';
 
-                var targetWidth = element.scrollWidth;
-                element.style.width = targetWidth + 'px';
+                // 👇 關鍵修正：手機窄螢幕下，外層 #capture-target 本身沒有橫向捲動，
+                // 它的 scrollWidth 只會等於「目前可視寬度」，而非內層寬表格的真實寬度。
+                // 必須先讓 .table-responsive 的 overflow 變成 visible、把表格撐開之後，
+                // 再去量測真正的完整寬度，否則手機截圖只會抓到窄窄一條、兩側都被裁掉。
                 if(wrapper) wrapper.style.overflowX = 'visible';
                 if(scrollHint) scrollHint.style.display = 'none';
+
+                var table = wrapper ? wrapper.querySelector('table') : null;
+                var targetWidth = Math.max(
+                    table ? table.scrollWidth : 0,
+                    wrapper ? wrapper.scrollWidth : 0,
+                    element.scrollWidth
+                );
+                element.style.width = targetWidth + 'px';
 
                 // 避免手機瀏覽器（尤其 iOS）canvas 尺寸過大造成渲染失敗或當機
                 var MAX_DIMENSION = 4000;
