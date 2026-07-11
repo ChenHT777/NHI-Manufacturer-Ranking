@@ -487,21 +487,36 @@ if 'html_preview' in st.session_state and 'current_base_filename' in st.session_
 
         <script>
             function downloadImage() {{
+                var btn = document.querySelector('.dl-btn');
                 var element = document.getElementById('capture-target');
                 var wrapper = document.querySelector('.table-responsive');
                 var scrollHint = element.querySelector('.scroll-hint');
-                
+
                 var originalWidth = element.style.width;
                 var originalOverflow = wrapper ? wrapper.style.overflowX : '';
                 var originalHintDisplay = scrollHint ? scrollHint.style.display : '';
-                
+                var originalBtnHtml = btn ? btn.innerHTML : '';
+
                 var targetWidth = element.scrollWidth;
                 element.style.width = targetWidth + 'px';
                 if(wrapper) wrapper.style.overflowX = 'visible';
                 if(scrollHint) scrollHint.style.display = 'none';
-                
-                html2canvas(element, {{ 
-                    scale: 2, 
+
+                // 避免手機瀏覽器（尤其 iOS）canvas 尺寸過大造成渲染失敗或當機
+                var MAX_DIMENSION = 4000;
+                var scale = (targetWidth * 2 > MAX_DIMENSION) ? Math.max(1, MAX_DIMENSION / targetWidth) : 2;
+
+                if (btn) {{ btn.disabled = true; btn.innerHTML = '⏳ 圖片產生中，請稍候...'; }}
+
+                function restoreUI() {{
+                    element.style.width = originalWidth;
+                    if(wrapper) wrapper.style.overflowX = originalOverflow;
+                    if(scrollHint) scrollHint.style.display = originalHintDisplay;
+                    if (btn) {{ btn.disabled = false; btn.innerHTML = originalBtnHtml; }}
+                }}
+
+                html2canvas(element, {{
+                    scale: scale,
                     backgroundColor: '#FFFFFF',
                     useCORS: true,
                     width: targetWidth,
@@ -509,58 +524,88 @@ if 'html_preview' in st.session_state and 'current_base_filename' in st.session_
                     scrollX: 0,
                     scrollY: 0
                 }}).then(function(canvas) {{
-                    element.style.width = originalWidth;
-                    if(wrapper) wrapper.style.overflowX = originalOverflow;
-                    if(scrollHint) scrollHint.style.display = originalHintDisplay;
-                    
-                    var imgDataUrl = canvas.toDataURL('image/png');
-                    
-                    // 👇 關鍵改動：偵測是否為 Apple iOS 裝置 (包含 iPhone, iPad, Mac 觸控模式)
-                    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-                    
-                    if (isIOS) {{
-                        // 【iOS 專屬繞過方案】將圖片直接渲染在網頁上，引導長按儲存
-                        var existingFallback = document.getElementById('ios-fallback-container');
-                        if (existingFallback) existingFallback.remove();
-                        
-                        var container = document.createElement('div');
-                        container.id = 'ios-fallback-container';
-                        container.style.marginTop = '25px';
-                        container.style.padding = '15px';
-                        container.style.border = '2px dashed #FF4B4B';
-                        container.style.borderRadius = '10px';
-                        container.style.textAlign = 'center';
-                        container.style.backgroundColor = '#FFF6F6';
-                        
-                        var msg = document.createElement('p');
-                        msg.innerHTML = '📱 <b>iPhone / iPad 用戶請注意：</b><br>因蘋果 iOS 安全限制無法自動下載。<br>請👉 <b>長按下方圖片</b> 👈，選擇「儲存圖片」或「分享」即可！';
-                        msg.style.color = '#333';
-                        msg.style.fontSize = '16px';
-                        msg.style.lineHeight = '1.6';
-                        msg.style.fontFamily = '微軟正黑體, sans-serif';
-                        
-                        var img = document.createElement('img');
-                        img.src = imgDataUrl;
-                        img.style.maxWidth = '100%';
-                        img.style.border = '1px solid #CCC';
-                        img.style.marginTop = '15px';
-                        img.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                        
-                        container.appendChild(msg);
-                        container.appendChild(img);
-                        document.body.appendChild(container);
-                        
-                        // 自動將畫面往下捲動，讓使用者立刻看到生成的圖片
-                        container.scrollIntoView({{behavior: 'smooth', block: 'end'}});
-                        
-                    }} else {{
-                        // 【Android 與 電腦版】維持正常的自動下載功能
-                        var link = document.createElement('a');
-                        link.download = '{st.session_state["current_base_filename"]}.png';
-                        link.href = imgDataUrl;
-                        link.click();
-                    }}
+                    restoreUI();
+
+                    var fileName = '{st.session_state["current_base_filename"]}.png';
+
+                    // 使用 Blob 而非 dataURL，避免手機瀏覽器因巨大字串而卡頓或當機
+                    canvas.toBlob(function(blob) {{
+                        if (!blob) {{
+                            alert('圖片產生失敗，請稍後再試。');
+                            return;
+                        }}
+
+                        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                        var isAndroid = /Android/.test(navigator.userAgent);
+                        var isMobile = isIOS || isAndroid;
+
+                        // 👇 關鍵改動：手機（含 iPhone 上的 Chrome/Safari）優先呼叫原生「分享」選單，
+                        // 可直接選擇「儲存圖片」，比 <a download> 或長按更穩定可靠
+                        if (isMobile && navigator.canShare) {{
+                            try {{
+                                var file = new File([blob], fileName, {{ type: 'image/png' }});
+                                if (navigator.canShare({{ files: [file] }})) {{
+                                    navigator.share({{ files: [file], title: fileName }}).catch(function(err) {{
+                                        console.log('分享已取消或失敗:', err);
+                                    }});
+                                    return;
+                                }}
+                            }} catch (e) {{
+                                console.warn('此瀏覽器不支援 Web Share，改用備援方案:', e);
+                            }}
+                        }}
+
+                        var blobUrl = URL.createObjectURL(blob);
+
+                        if (isIOS) {{
+                            // 【iOS 備援方案】若無法呼叫分享選單，將圖片直接渲染在網頁上，引導長按儲存
+                            var existingFallback = document.getElementById('ios-fallback-container');
+                            if (existingFallback) existingFallback.remove();
+
+                            var container = document.createElement('div');
+                            container.id = 'ios-fallback-container';
+                            container.style.marginTop = '25px';
+                            container.style.padding = '15px';
+                            container.style.border = '2px dashed #FF4B4B';
+                            container.style.borderRadius = '10px';
+                            container.style.textAlign = 'center';
+                            container.style.backgroundColor = '#FFF6F6';
+
+                            var msg = document.createElement('p');
+                            msg.innerHTML = '📱 <b>iPhone / iPad 用戶請注意：</b><br>請👉 <b>長按下方圖片</b> 👈，選擇「儲存圖片」或「分享」即可！';
+                            msg.style.color = '#333';
+                            msg.style.fontSize = '16px';
+                            msg.style.lineHeight = '1.6';
+                            msg.style.fontFamily = '微軟正黑體, sans-serif';
+
+                            var img = document.createElement('img');
+                            img.src = blobUrl;
+                            img.style.maxWidth = '100%';
+                            img.style.border = '1px solid #CCC';
+                            img.style.marginTop = '15px';
+                            img.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+
+                            container.appendChild(msg);
+                            container.appendChild(img);
+                            document.body.appendChild(container);
+
+                            // 自動將畫面往下捲動，讓使用者立刻看到生成的圖片
+                            container.scrollIntoView({{behavior: 'smooth', block: 'end'}});
+
+                        }} else {{
+                            // 【Android 與電腦版】維持正常的自動下載功能
+                            var link = document.createElement('a');
+                            link.download = fileName;
+                            link.href = blobUrl;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            setTimeout(function() {{ URL.revokeObjectURL(blobUrl); }}, 10000);
+                        }}
+                    }}, 'image/png');
+
                 }}).catch(function(error) {{
+                    restoreUI();
                     console.error('截圖失敗:', error);
                     alert('截圖產生失敗，請稍後再試。');
                 }});
