@@ -516,8 +516,8 @@ if 'html_preview' in st.session_state and 'current_base_filename' in st.session_
                     var imgDataUrl = canvas.toDataURL('image/png');
                     var link = document.createElement('a');
                     
-                    # 👇 關鍵改動：這裡直接動態帶入 Python 產生的主檔名
-                    link.download = '{st.session_state['current_base_filename']}.png';
+                    // 👇 關鍵改動：將註解改為 JS 格式的 //，並用雙引號包住字典鍵值確保 Python f-string 正常編譯
+                    link.download = '{st.session_state["current_base_filename"]}.png';
                     link.href = imgDataUrl;
                     link.click();
                 }});
